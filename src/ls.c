@@ -310,6 +310,8 @@ static void queue_directory (char const *name, char const *realname,
 static void sort_files (void);
 static void parse_ls_color (void);
 
+static bool table_format = false;
+
 // �뚯씪 �ш린瑜� �щ엺�� �쎄린 �ъ슫 �⑥쐞濡� 蹂���
 static void
 format_size (uintmax_t size, char *buf, size_t buf_size)
@@ -905,6 +907,7 @@ static struct option const long_options[] =
   {"human-readable", no_argument, nullptr, 'h'},
   {"inode", no_argument, nullptr, 'i'},
   {"json", no_argument, NULL, 'J'},
+  {"table", no_argument, NULL, 'E'},
   {"kibibytes", no_argument, nullptr, 'k'},
   {"numeric-uid-gid", no_argument, nullptr, 'n'},
   {"no-group", no_argument, nullptr, 'G'},
@@ -2108,6 +2111,11 @@ decode_switches (int argc, char **argv)
           print_hyperlink = false;
           dired = true;
           break;
+        
+        case 'E':  // Table format
+          table_format = true;
+          break;
+
 
         case 'F':
           {
@@ -4168,7 +4176,58 @@ print_current_files (void)
     }
     printf("]\n");
     return;
+  }     
+  if (table_format) {
+    // �뚯씠釉� �ㅻ뜑 異쒕젰
+    printf("�뚯씪紐�       | �뚯씪 �ш린 | 沅뚰븳        | 留덉�留� �섏젙 �쒓컙\n");
+    printf("------------------------------------------------------------------------\n");
+
+    for (idx_t i = 0; i < cwd_n_used; i++) {
+        struct fileinfo *f = sorted_file[i];
+        char timebuf[64];
+        char sizebuf[64];
+        char perms[11];
+
+        // �섏젙 �쒓컙 �щ㎎
+        if (f->stat_ok) {
+            struct tm *mtime = localtime(&f->stat.st_mtime);
+            strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M", mtime);
+        } else {
+            snprintf(timebuf, sizeof(timebuf), "unknown");
+        }
+
+        // �뚯씪 �ш린 �щ㎎
+        if (f->stat_ok) {
+            format_size(f->stat.st_size, sizebuf, sizeof(sizebuf));
+        } else {
+            snprintf(sizebuf, sizeof(sizebuf), "unknown");
+        }
+
+        // �뚯씪 沅뚰븳 �щ㎎
+        if (f->stat_ok) {
+            mode_t mode = f->stat.st_mode;
+            snprintf(perms, sizeof(perms), "%c%c%c%c%c%c%c%c%c%c",
+                     S_ISDIR(mode) ? 'd' : '-',
+                     mode & S_IRUSR ? 'r' : '-',
+                     mode & S_IWUSR ? 'w' : '-',
+                     mode & S_IXUSR ? 'x' : '-',
+                     mode & S_IRGRP ? 'r' : '-',
+                     mode & S_IWGRP ? 'w' : '-',
+                     mode & S_IXGRP ? 'x' : '-',
+                     mode & S_IROTH ? 'r' : '-',
+                     mode & S_IWOTH ? 'w' : '-',
+                     mode & S_IXOTH ? 'x' : '-');
+        } else {
+            snprintf(perms, sizeof(perms), "unknown");
+        }
+
+        // �뚯씠釉� �� 異쒕젰
+        printf("%-12s | %-9s | %-11s | %s\n", f->name, sizebuf, perms, timebuf);
+    }
+
+    return;
   }
+
 
 
 
@@ -5667,4 +5726,4 @@ Exit status:\n\
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
-}
+} 
