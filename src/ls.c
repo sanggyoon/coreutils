@@ -245,9 +245,6 @@ struct fileinfo
     size_t width;
   };
 
-#define BIN_STR(...) \
-  sizeof ((char []) {__VA_ARGS__}), (char const []) {__VA_ARGS__}
-
 /* Null is a valid character in a color indicator (think about Epson
    printers, for example) so we have to use a length/buffer string
    type.  */
@@ -289,7 +286,7 @@ static void extract_dirs_from_files (char const *dirname,
 static void get_link_name (char const *filename, struct fileinfo *f,
                            bool command_line_arg);
 static void indent (size_t from, size_t to);
-static size_t calculate_columns (bool by_columns);
+static idx_t calculate_columns (bool by_columns);
 static void print_current_files (void);
 static void print_dir (char const *name, char const *realname,
                        bool command_line_arg);
@@ -312,6 +309,23 @@ static void queue_directory (char const *name, char const *realname,
                              bool command_line_arg);
 static void sort_files (void);
 static void parse_ls_color (void);
+
+// �뚯씪 �ш린瑜� �щ엺�� �쎄린 �ъ슫 �⑥쐞濡� 蹂���
+static void
+format_size (uintmax_t size, char *buf, size_t buf_size)
+{
+    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    double readable_size = size;
+
+    while (readable_size >= 1024 && unit_index < 4) {
+        readable_size /= 1024;
+        unit_index++;
+    }
+
+    snprintf(buf, buf_size, "%.1f %s", readable_size, units[unit_index]);
+}
+
 
 static int getenv_quoting_style (void);
 
@@ -344,10 +358,10 @@ static Hash_table *active_dir_set;
 static struct fileinfo *cwd_file;
 
 /* Length of block that 'cwd_file' points to, measured in files.  */
-static size_t cwd_n_alloc;
+static idx_t cwd_n_alloc;
 
 /* Index of first unused slot in 'cwd_file'.  */
-static size_t cwd_n_used;
+static idx_t cwd_n_used;
 
 /* Whether files needs may need padding due to quoting.  */
 static bool cwd_some_quoted;
@@ -632,30 +646,43 @@ struct color_ext_type
 
 static struct bin_str color_indicator[] =
   {
-    { BIN_STR ('\033','[') },		/* lc: Left of color sequence */
-    { BIN_STR ('m') },			/* rc: Right of color sequence */
+    { 2, (char const []) {'\033','['} },/* lc: Left of color sequence */
+    { 1, (char const []) {'m'} },	/* rc: Right of color sequence */
     { 0, nullptr },			/* ec: End color (replaces lc+rs+rc) */
-    { BIN_STR ('0') },			/* rs: Reset to ordinary colors */
+    { 1, (char const []) {'0'} },	/* rs: Reset to ordinary colors */
     { 0, nullptr },			/* no: Normal */
     { 0, nullptr },			/* fi: File: default */
-    { BIN_STR ('0','1',';','3','4') },	/* di: Directory: bright blue */
-    { BIN_STR ('0','1',';','3','6') },	/* ln: Symlink: bright cyan */
-    { BIN_STR ('3','3') },		/* pi: Pipe: yellow/brown */
-    { BIN_STR ('0','1',';','3','5') },	/* so: Socket: bright magenta */
-    { BIN_STR ('0','1',';','3','3') },	/* bd: Block device: bright yellow */
-    { BIN_STR ('0','1',';','3','3') },	/* cd: Char device: bright yellow */
+    { 5, ((char const [])
+          {'0','1',';','3','4'}) },	/* di: Directory: bright blue */
+    { 5, ((char const [])
+          {'0','1',';','3','6'}) },	/* ln: Symlink: bright cyan */
+    { 2, (char const []) {'3','3'} },		/* pi: Pipe: yellow/brown */
+    { 5, ((char const [])
+          {'0','1',';','3','5'}) },	/* so: Socket: bright magenta */
+    { 5, ((char const [])
+          {'0','1',';','3','3'}) },	/* bd: Block device: bright yellow */
+    { 5, ((char const [])
+          {'0','1',';','3','3'}) },	/* cd: Char device: bright yellow */
     { 0, nullptr },			/* mi: Missing file: undefined */
     { 0, nullptr },			/* or: Orphaned symlink: undefined */
-    { BIN_STR ('0','1',';','3','2') },	/* ex: Executable: bright green */
-    { BIN_STR ('0','1',';','3','5') },	/* do: Door: bright magenta */
-    { BIN_STR ('3','7',';','4','1') },	/* su: setuid: white on red */
-    { BIN_STR ('3','0',';','4','3') },	/* sg: setgid: black on yellow */
-    { BIN_STR ('3','7',';','4','4') },	/* st: sticky: black on blue */
-    { BIN_STR ('3','4',';','4','2') },	/* ow: other-writable: blue on green */
-    { BIN_STR ('3','0',';','4','2') },	/* tw: ow w/ sticky: black on green */
+    { 5, ((char const [])
+          {'0','1',';','3','2'}) },	/* ex: Executable: bright green */
+    { 5, ((char const [])
+          {'0','1',';','3','5'}) },	/* do: Door: bright magenta */
+    { 5, ((char const [])
+          {'3','7',';','4','1'}) },	/* su: setuid: white on red */
+    { 5, ((char const [])
+          {'3','0',';','4','3'}) },	/* sg: setgid: black on yellow */
+    { 5, ((char const [])
+          {'3','7',';','4','4'}) },	/* st: sticky: black on blue */
+    { 5, ((char const [])
+          {'3','4',';','4','2'}) },	/* ow: other-writable: blue on green */
+    { 5, ((char const [])
+          {'3','0',';','4','2'}) },	/* tw: ow w/ sticky: black on green */
     { 0, nullptr },			/* ca: disabled by default */
     { 0, nullptr },			/* mh: disabled by default */
-    { BIN_STR ('\033','[','K') },	/* cl: clear to end of line */
+    { 3, ((char const [])
+          {'\033','[','K'}) },		/* cl: clear to end of line */
   };
 
 /* A list mapping file extensions to corresponding display sequence.  */
@@ -877,6 +904,7 @@ static struct option const long_options[] =
    GROUP_DIRECTORIES_FIRST_OPTION},
   {"human-readable", no_argument, nullptr, 'h'},
   {"inode", no_argument, nullptr, 'i'},
+  {"json", no_argument, NULL, 'J'},
   {"kibibytes", no_argument, nullptr, 'k'},
   {"numeric-uid-gid", no_argument, nullptr, 'n'},
   {"no-group", no_argument, nullptr, 'G'},
@@ -1323,6 +1351,7 @@ static char abformat[2][12][ABFORMAT_SIZE];
    nl_langinfo fails, if a format or month abbreviation is unusually
    long, or if a month abbreviation contains '%'.  */
 static bool use_abformat;
+static bool json_format = false;
 
 /* Store into ABMON the abbreviated month names, suitably aligned.
    Return true if successful.  */
@@ -1779,7 +1808,7 @@ main (int argc, char **argv)
     }
 
   cwd_n_alloc = 100;
-  cwd_file = xnmalloc (cwd_n_alloc, sizeof *cwd_file);
+  cwd_file = xmalloc (cwd_n_alloc * sizeof *cwd_file);
   cwd_n_used = 0;
 
   clear_files ();
@@ -2109,6 +2138,10 @@ decode_switches (int argc, char **argv)
 
         case 'I':
           add_ignore_pattern (optarg);
+          break;
+        
+        case 'J':
+          json_format = true;
           break;
 
         case 'L':
@@ -3256,7 +3289,7 @@ free_ent (struct fileinfo *f)
 static void
 clear_files (void)
 {
-  for (size_t i = 0; i < cwd_n_used; i++)
+  for (idx_t i = 0; i < cwd_n_used; i++)
     {
       struct fileinfo *f = sorted_file[i];
       free_ent (f);
@@ -3277,14 +3310,6 @@ clear_files (void)
   file_size_width = 0;
 }
 
-/* Return true if ERR implies lack-of-support failure by a
-   getxattr-calling function like file_has_acl.  */
-static bool
-errno_unsupported (int err)
-{
-  return (err == EINVAL || err == ENOSYS || is_ENOTSUP (err));
-}
-
 /* Cache file_has_aclinfo failure, when it's trivial to do.
    Like file_has_aclinfo, but when F's st_dev says it's on a file
    system lacking ACL support, return 0 with ENOTSUP immediately.  */
@@ -3292,19 +3317,33 @@ static int
 file_has_aclinfo_cache (char const *file, struct fileinfo *f,
                         struct aclinfo *ai, int flags)
 {
-  /* st_dev of the most recently processed device for which we've
-     found that file_has_acl fails indicating lack of support.  */
+  /* st_dev and associated info for the most recently processed device
+     for which file_has_acl failed indicating lack of support.  */
+  static int unsupported_return;
+  static char *unsupported_scontext;
+  static int unsupported_scontext_err;
   static dev_t unsupported_device;
 
   if (f->stat.st_dev == unsupported_device)
     {
+      ai->buf = ai->u.__gl_acl_ch;
+      ai->size = 0;
+      ai->scontext = unsupported_scontext;
+      ai->scontext_err = unsupported_scontext_err;
       errno = ENOTSUP;
-      return 0;
+      return unsupported_return;
     }
 
+  errno = 0;
   int n = file_has_aclinfo (file, ai, flags);
-  if (n <= 0 && errno_unsupported (ai->u.err))
-    unsupported_device = f->stat.st_dev;
+  int err = errno;
+  if (n <= 0 && !acl_errno_valid (err))
+    {
+      unsupported_return = n;
+      unsupported_scontext = ai->scontext;
+      unsupported_scontext_err = ai->scontext_err;
+      unsupported_device = f->stat.st_dev;
+    }
   return n;
 }
 
@@ -3325,7 +3364,7 @@ has_capability_cache (char const *file, struct fileinfo *f)
     }
 
   bool b = has_capability (file);
-  if ( !b && errno_unsupported (errno))
+  if ( !b && !acl_errno_valid (errno))
     unsupported_device = f->stat.st_dev;
   return b;
 }
@@ -3354,17 +3393,31 @@ gobble_file (char const *name, enum filetype type, ino_t inode,
   affirm (! command_line_arg || inode == NOT_AN_INODE_NUMBER);
 
   if (cwd_n_used == cwd_n_alloc)
-    {
-      cwd_file = xnrealloc (cwd_file, cwd_n_alloc, 2 * sizeof *cwd_file);
-      cwd_n_alloc *= 2;
-    }
+    cwd_file = xpalloc (cwd_file, &cwd_n_alloc, 1, -1, sizeof *cwd_file);
 
   f = &cwd_file[cwd_n_used];
   memset (f, '\0', sizeof *f);
+  // �뚯씪 寃쎈줈 援ъ꽦
+  char filepath[PATH_MAX];
+  if (dirname && *dirname)
+    snprintf(filepath, sizeof(filepath), "%s/%s", dirname, name);
+  else
+    snprintf(filepath, sizeof(filepath), "%s", name);
+
+  // stat �몄텧濡� �뚯씪 �뺣낫 媛��몄삤湲�
+  if (stat(filepath, &f->stat) == 0) {
+    f->stat_ok = true;
+  } else {
+    perror("stat");
+    f->stat_ok = false;
+  }
+
+  // 湲곗〈 肄붾뱶 �좎�
   f->stat.st_ino = inode;
   f->filetype = type;
   f->scontext = UNKNOWN_SECURITY_CONTEXT;
 
+    
   f->quoted = -1;
   if ((! cwd_some_quoted) && align_variable_outer_quotes)
     {
@@ -3493,14 +3546,16 @@ gobble_file (char const *name, enum filetype type, ino_t inode,
   if (type == directory && command_line_arg && !immediate_dirs)
     f->filetype = type = arg_directory;
 
+  bool get_scontext = (format == long_format) | print_scontext;
   bool check_capability = format_needs_capability & (type == normal);
 
-  if ((format == long_format) | print_scontext | check_capability)
+  if (get_scontext | check_capability)
     {
       struct aclinfo ai;
-      int n = file_has_aclinfo_cache (full_name, f, &ai,
-                                      ((do_deref ? ACL_SYMLINK_FOLLOW : 0)
-                                       | filetype_d_type[type]));
+      int aclinfo_flags = ((do_deref ? ACL_SYMLINK_FOLLOW : 0)
+                           | (get_scontext ? ACL_GET_SCONTEXT : 0)
+                           | filetype_d_type[type]);
+      int n = file_has_aclinfo_cache (full_name, f, &ai, aclinfo_flags);
       bool have_acl = 0 < n;
       bool have_scontext = !ai.scontext_err;
       f->acl_type = (!have_scontext && !have_acl
@@ -3696,8 +3751,7 @@ basename_is_dot_or_dotdot (char const *name)
 static void
 extract_dirs_from_files (char const *dirname, bool command_line_arg)
 {
-  size_t i;
-  size_t j;
+  idx_t i, j;
   bool ignore_dot_and_dot_dot = (dirname != nullptr);
 
   if (dirname && LOOP_DETECT)
@@ -3710,8 +3764,9 @@ extract_dirs_from_files (char const *dirname, bool command_line_arg)
 
   /* Queue the directories last one first, because queueing reverses the
      order.  */
-  for (i = cwd_n_used; i-- != 0; )
+  for (i = cwd_n_used; 0 < i; )
     {
+      i--;
       struct fileinfo *f = sorted_file[i];
 
       if (is_directory (f)
@@ -4014,7 +4069,7 @@ static_assert (ARRAY_CARDINALITY (sort_functions)
 static void
 initialize_ordering_vector (void)
 {
-  for (size_t i = 0; i < cwd_n_used; i++)
+  for (idx_t i = 0; i < cwd_n_used; i++)
     sorted_file[i] = &cwd_file[i];
 }
 
@@ -4027,8 +4082,7 @@ update_current_files_info (void)
   if (sort_type == sort_width
       || (line_length && (format == many_per_line || format == horizontal)))
     {
-      size_t i;
-      for (i = 0; i < cwd_n_used; i++)
+      for (idx_t i = 0; i < cwd_n_used; i++)
         {
           struct fileinfo *f = sorted_file[i];
           f->width = fileinfo_name_width (f);
@@ -4043,10 +4097,10 @@ sort_files (void)
 {
   bool use_strcmp;
 
-  if (sorted_file_alloc < cwd_n_used + cwd_n_used / 2)
+  if (sorted_file_alloc < cwd_n_used + (cwd_n_used >> 1))
     {
       free (sorted_file);
-      sorted_file = xnmalloc (cwd_n_used, 3 * sizeof *sorted_file);
+      sorted_file = xinmalloc (cwd_n_used, 3 * sizeof *sorted_file);
       sorted_file_alloc = 3 * cwd_n_used;
     }
 
@@ -4083,12 +4137,46 @@ sort_files (void)
 static void
 print_current_files (void)
 {
-  size_t i;
+  if (json_format) {
+    printf("[\n");
+    for (idx_t i = 0; i < cwd_n_used; i++) {
+        struct fileinfo *f = sorted_file[i];
+        char timebuf[64];
+        char sizebuf[64];
 
+        // �섏젙 �쒓컙 �щ㎎
+        if (f->stat_ok) {
+            struct tm *mtime = localtime(&f->stat.st_mtime);
+            strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M", mtime);
+        } else {
+            snprintf(timebuf, sizeof(timebuf), "unknown");
+        }
+
+        // �뚯씪 �ш린 �щ㎎
+        if (f->stat_ok) {
+            format_size(f->stat.st_size, sizebuf, sizeof(sizebuf));
+        } else {
+            snprintf(sizebuf, sizeof(sizebuf), "unknown");
+        }
+
+        // JSON �뺤떇�쇰줈 異쒕젰
+        printf("  {\"name\": \"%s\", \"size\": \"%s\", \"modified\": \"%s\"}%s\n",
+               f->name,
+               sizebuf,
+               timebuf,
+               (i < cwd_n_used - 1) ? "," : "");
+    }
+    printf("]\n");
+    return;
+  }
+
+
+
+  // 湲곗〈 �щ㎎ 泥섎━ 濡쒖쭅
   switch (format)
     {
     case one_per_line:
-      for (i = 0; i < cwd_n_used; i++)
+      for (idx_t i = 0; i < cwd_n_used; i++)
         {
           print_file_name_and_frills (sorted_file[i], 0);
           putchar (eolbyte);
@@ -4114,7 +4202,7 @@ print_current_files (void)
       break;
 
     case long_format:
-      for (i = 0; i < cwd_n_used; i++)
+      for (idx_t i = 0; i < cwd_n_used; i++)
         {
           set_normal_color ();
           print_long_format (sorted_file[i]);
@@ -4123,6 +4211,7 @@ print_current_files (void)
       break;
     }
 }
+
 
 /* Replace the first %b with precomputed aligned month names.
    Note on glibc-2.7 at least, this speeds up the whole 'ls -lU'
@@ -5101,18 +5190,17 @@ length_of_file_name_and_frills (const struct fileinfo *f)
 static void
 print_many_per_line (void)
 {
-  size_t row;			/* Current row.  */
-  size_t cols = calculate_columns (true);
+  idx_t cols = calculate_columns (true);
   struct column_info const *line_fmt = &column_info[cols - 1];
 
   /* Calculate the number of rows that will be in each column except possibly
      for a short column on the right.  */
-  size_t rows = cwd_n_used / cols + (cwd_n_used % cols != 0);
+  idx_t rows = cwd_n_used / cols + (cwd_n_used % cols != 0);
 
-  for (row = 0; row < rows; row++)
+  for (idx_t row = 0; row < rows; row++)
     {
       size_t col = 0;
-      size_t filesno = row;
+      idx_t filesno = row;
       size_t pos = 0;
 
       /* Print the next row.  */
@@ -5123,9 +5211,9 @@ print_many_per_line (void)
           size_t max_name_length = line_fmt->col_arr[col++];
           print_file_name_and_frills (f, pos);
 
-          filesno += rows;
-          if (filesno >= cwd_n_used)
+          if (cwd_n_used - rows <= filesno)
             break;
+          filesno += rows;
 
           indent (pos + name_length, pos + max_name_length);
           pos += max_name_length;
@@ -5137,9 +5225,8 @@ print_many_per_line (void)
 static void
 print_horizontal (void)
 {
-  size_t filesno;
   size_t pos = 0;
-  size_t cols = calculate_columns (false);
+  idx_t cols = calculate_columns (false);
   struct column_info const *line_fmt = &column_info[cols - 1];
   struct fileinfo const *f = sorted_file[0];
   size_t name_length = length_of_file_name_and_frills (f);
@@ -5149,9 +5236,9 @@ print_horizontal (void)
   print_file_name_and_frills (f, 0);
 
   /* Now the rest.  */
-  for (filesno = 1; filesno < cwd_n_used; ++filesno)
+  for (idx_t filesno = 1; filesno < cwd_n_used; filesno++)
     {
-      size_t col = filesno % cols;
+      idx_t col = filesno % cols;
 
       if (col == 0)
         {
@@ -5178,10 +5265,9 @@ print_horizontal (void)
 static void
 print_with_separator (char sep)
 {
-  size_t filesno;
   size_t pos = 0;
 
-  for (filesno = 0; filesno < cwd_n_used; filesno++)
+  for (idx_t filesno = 0; filesno < cwd_n_used; filesno++)
     {
       struct fileinfo const *f = sorted_file[filesno];
       size_t len = line_length ? length_of_file_name_and_frills (f) : 0;
@@ -5262,65 +5348,41 @@ attach (char *dest, char const *dirname, char const *name)
    narrowest possible columns.  */
 
 static void
-init_column_info (size_t max_cols)
+init_column_info (idx_t max_cols)
 {
-  size_t i;
-
   /* Currently allocated columns in column_info.  */
-  static size_t column_info_alloc;
+  static idx_t column_info_alloc;
 
   if (column_info_alloc < max_cols)
     {
-      size_t new_column_info_alloc;
-      size_t *p;
-
-      if (!max_idx || max_cols < max_idx / 2)
-        {
-          /* The number of columns is far less than the display width
-             allows.  Grow the allocation, but only so that it's
-             double the current requirements.  If the display is
-             extremely wide, this avoids allocating a lot of memory
-             that is never needed.  */
-          column_info = xnrealloc (column_info, max_cols,
-                                   2 * sizeof *column_info);
-          new_column_info_alloc = 2 * max_cols;
-        }
-      else
-        {
-          column_info = xnrealloc (column_info, max_idx, sizeof *column_info);
-          new_column_info_alloc = max_idx;
-        }
+      idx_t old_column_info_alloc = column_info_alloc;
+      column_info = xpalloc (column_info, &column_info_alloc,
+                             max_cols - column_info_alloc, -1,
+                             sizeof *column_info);
 
       /* Allocate the new size_t objects by computing the triangle
          formula n * (n + 1) / 2, except that we don't need to
          allocate the part of the triangle that we've already
          allocated.  Check for address arithmetic overflow.  */
-      {
-        size_t column_info_growth = new_column_info_alloc - column_info_alloc;
-        size_t s = column_info_alloc + 1 + new_column_info_alloc;
-        size_t t = s * column_info_growth;
-        if (s < new_column_info_alloc || t / column_info_growth != s)
-          xalloc_die ();
-        p = xnmalloc (t / 2, sizeof *p);
-      }
+      idx_t column_info_growth = column_info_alloc - old_column_info_alloc, s;
+      if (ckd_add (&s, old_column_info_alloc + 1, column_info_alloc)
+          || ckd_mul (&s, s, column_info_growth))
+        xalloc_die ();
+      size_t *p = xinmalloc (s >> 1, sizeof *p);
 
       /* Grow the triangle by parceling out the cells just allocated.  */
-      for (i = column_info_alloc; i < new_column_info_alloc; i++)
+      for (idx_t i = old_column_info_alloc; i < column_info_alloc; i++)
         {
           column_info[i].col_arr = p;
           p += i + 1;
         }
-
-      column_info_alloc = new_column_info_alloc;
     }
 
-  for (i = 0; i < max_cols; ++i)
+  for (idx_t i = 0; i < max_cols; ++i)
     {
-      size_t j;
-
       column_info[i].valid_len = true;
       column_info[i].line_len = (i + 1) * MIN_COLUMN_WIDTH;
-      for (j = 0; j <= i; ++j)
+      for (idx_t j = 0; j <= i; ++j)
         column_info[i].col_arr[j] = MIN_COLUMN_WIDTH;
     }
 }
@@ -5328,32 +5390,29 @@ init_column_info (size_t max_cols)
 /* Calculate the number of columns needed to represent the current set
    of files in the current display width.  */
 
-static size_t
+static idx_t
 calculate_columns (bool by_columns)
 {
-  size_t filesno;		/* Index into cwd_file.  */
-  size_t cols;			/* Number of files across.  */
-
   /* Normally the maximum number of columns is determined by the
      screen width.  But if few files are available this might limit it
      as well.  */
-  size_t max_cols = 0 < max_idx && max_idx < cwd_n_used ? max_idx : cwd_n_used;
+  idx_t max_cols = 0 < max_idx && max_idx < cwd_n_used ? max_idx : cwd_n_used;
 
   init_column_info (max_cols);
 
   /* Compute the maximum number of possible columns.  */
-  for (filesno = 0; filesno < cwd_n_used; ++filesno)
+  for (idx_t filesno = 0; filesno < cwd_n_used; ++filesno)
     {
       struct fileinfo const *f = sorted_file[filesno];
       size_t name_length = length_of_file_name_and_frills (f);
 
-      for (size_t i = 0; i < max_cols; ++i)
+      for (idx_t i = 0; i < max_cols; ++i)
         {
           if (column_info[i].valid_len)
             {
-              size_t idx = (by_columns
-                            ? filesno / ((cwd_n_used + i) / (i + 1))
-                            : filesno % (i + 1));
+              idx_t idx = (by_columns
+                           ? filesno / ((cwd_n_used + i) / (i + 1))
+                           : filesno % (i + 1));
               size_t real_length = name_length + (idx == i ? 0 : 2);
 
               if (column_info[i].col_arr[idx] < real_length)
@@ -5369,6 +5428,7 @@ calculate_columns (bool by_columns)
     }
 
   /* Find maximum allowed columns.  */
+  idx_t cols;
   for (cols = max_cols; 1 < cols; --cols)
     {
       if (column_info[cols - 1].valid_len)
