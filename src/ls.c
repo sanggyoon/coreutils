@@ -4176,7 +4176,7 @@ print_current_files (void)
     }
     printf("]\n");
     return;
-  }     
+  }
   if (table_format) {
     // �뚯씠釉� �ㅻ뜑 異쒕젰
     printf("�뚯씪紐�       | �뚯씪 �ш린 | 沅뚰븳        | 留덉�留� �섏젙 �쒓컙\n");
@@ -5726,4 +5726,4 @@ Exit status:\n\
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
-} 
+}
