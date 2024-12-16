@@ -313,8 +313,6 @@ static void parse_ls_color (void);
 static bool table_format = false;
 static bool visual_format = false;
 
-
-// �뚯씪 �ш린瑜� �щ엺�� �쎄린 �ъ슫 �⑥쐞濡� 蹂���
 static void
 format_size (uintmax_t size, char *buf, size_t buf_size)
 {
@@ -3412,14 +3410,12 @@ gobble_file (char const *name, enum filetype type, ino_t inode,
 
   f = &cwd_file[cwd_n_used];
   memset (f, '\0', sizeof *f);
-  // �뚯씪 寃쎈줈 援ъ꽦
   char filepath[PATH_MAX];
   if (dirname && *dirname)
     snprintf(filepath, sizeof(filepath), "%s/%s", dirname, name);
   else
     snprintf(filepath, sizeof(filepath), "%s", name);
 
-  // stat �몄텧濡� �뚯씪 �뺣낫 媛��몄삤湲�
   if (stat(filepath, &f->stat) == 0) {
     f->stat_ok = true;
   } else {
@@ -3427,7 +3423,6 @@ gobble_file (char const *name, enum filetype type, ino_t inode,
     f->stat_ok = false;
   }
 
-  // 湲곗〈 肄붾뱶 �좎�
   f->stat.st_ino = inode;
   f->filetype = type;
   f->scontext = UNKNOWN_SECURITY_CONTEXT;
@@ -4159,7 +4154,6 @@ print_current_files (void)
         char timebuf[64];
         char sizebuf[64];
 
-        // �섏젙 �쒓컙 �щ㎎
         if (f->stat_ok) {
             struct tm *mtime = localtime(&f->stat.st_mtime);
             strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M", mtime);
@@ -4167,14 +4161,12 @@ print_current_files (void)
             snprintf(timebuf, sizeof(timebuf), "unknown");
         }
 
-        // �뚯씪 �ш린 �щ㎎
         if (f->stat_ok) {
             format_size(f->stat.st_size, sizebuf, sizeof(sizebuf));
         } else {
             snprintf(sizebuf, sizeof(sizebuf), "unknown");
         }
 
-        // JSON �뺤떇�쇰줈 異쒕젰
         printf("  {\"name\": \"%s\", \"size\": \"%s\", \"modified\": \"%s\"}%s\n",
                f->name,
                sizebuf,
@@ -4185,8 +4177,7 @@ print_current_files (void)
     return;
   }
   if (table_format) {
-    // �뚯씠釉� �ㅻ뜑 異쒕젰
-    printf("�뚯씪紐�       | �뚯씪 �ш린 | 沅뚰븳        | 留덉�留� �섏젙 �쒓컙\n");
+    printf("파일명       | 파일 크기 | 권한        | 마지막 수정 시간\n");
     printf("------------------------------------------------------------------------\n");
 
     for (idx_t i = 0; i < cwd_n_used; i++) {
@@ -4195,7 +4186,6 @@ print_current_files (void)
         char sizebuf[64];
         char perms[11];
 
-        // �섏젙 �쒓컙 �щ㎎
         if (f->stat_ok) {
             struct tm *mtime = localtime(&f->stat.st_mtime);
             strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M", mtime);
@@ -4203,14 +4193,12 @@ print_current_files (void)
             snprintf(timebuf, sizeof(timebuf), "unknown");
         }
 
-        // �뚯씪 �ш린 �щ㎎
         if (f->stat_ok) {
             format_size(f->stat.st_size, sizebuf, sizeof(sizebuf));
         } else {
             snprintf(sizebuf, sizeof(sizebuf), "unknown");
         }
 
-        // �뚯씪 沅뚰븳 �щ㎎
         if (f->stat_ok) {
             mode_t mode = f->stat.st_mode;
             snprintf(perms, sizeof(perms), "%c%c%c%c%c%c%c%c%c%c",
@@ -4228,7 +4216,6 @@ print_current_files (void)
             snprintf(perms, sizeof(perms), "unknown");
         }
 
-        // �뚯씠釉� �� 異쒕젰
         printf("%-12s | %-9s | %-11s | %s\n", f->name, sizebuf, perms, timebuf);
     }
 
@@ -4238,9 +4225,8 @@ print_current_files (void)
   if (visual_format) {
     uintmax_t total_size = 0;
 
-    // �꾩껜 �뚯씪 �ш린 怨꾩궛
     for (idx_t i = 0; i < cwd_n_used; i++) {
-      struct fileinfo *f = sorted_file[i];  // 紐낆떆�� 罹먯뒪��
+      struct fileinfo *f = sorted_file[i];  
       if (f->stat_ok) {
         total_size += f->stat.st_size;
       }
@@ -4252,15 +4238,14 @@ print_current_files (void)
         return;
     }
 
-    // 媛� �뚯씪�� �ш린 鍮꾩쑉怨� �쒓컖�� �쒗쁽 異쒕젰
     for (idx_t i = 0; i < cwd_n_used; i++) {
         struct fileinfo *f = sorted_file[i];
-        char bar[51] = {0};  // �쒓컖�� 諛� (理쒕� 湲몄씠 50)
+        char bar[51] = {0};  
         double percentage = 0.0;
 
         if (f->stat_ok) {
             percentage = (double)f->stat.st_size / total_size * 100.0;
-            int bar_length = (int)(percentage / 2);  // 理쒕� 50媛쒖쓽 # �ъ슜
+            int bar_length = (int)(percentage / 2);  
             memset(bar, '#', bar_length);
         }
 
@@ -4274,7 +4259,7 @@ print_current_files (void)
 
 
 
-  // 湲곗〈 �щ㎎ 泥섎━ 濡쒖쭅
+
   switch (format)
     {
     case one_per_line:
