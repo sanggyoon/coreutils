@@ -311,6 +311,8 @@ static void sort_files (void);
 static void parse_ls_color (void);
 
 static bool table_format = false;
+static bool visual_format = false;
+
 
 // �뚯씪 �ш린瑜� �щ엺�� �쎄린 �ъ슫 �⑥쐞濡� 蹂���
 static void
@@ -357,7 +359,8 @@ static Hash_table *active_dir_set;
    'cwd_n_used' is the number actually in use.  */
 
 /* Address of block containing the files that are described.  */
-static struct fileinfo *cwd_file;
+struct fileinfo *cwd_file;
+struct fileinfo **sorted_file;
 
 /* Length of block that 'cwd_file' points to, measured in files.  */
 static idx_t cwd_n_alloc;
@@ -374,7 +377,6 @@ static bool align_variable_outer_quotes;
 
 /* Vector of pointers to files, in proper sorted order, and the number
    of entries allocated for it.  */
-static void **sorted_file;
 static size_t sorted_file_alloc;
 
 /* When true, in a color listing, color each symlink name according to the
@@ -935,6 +937,7 @@ static struct option const long_options[] =
   {"show-control-chars", no_argument, nullptr, SHOW_CONTROL_CHARS_OPTION},
   {"sort", required_argument, nullptr, SORT_OPTION},
   {"tabsize", required_argument, nullptr, 'T'},
+  {"visual", no_argument, NULL, 'V'},
   {"time", required_argument, nullptr, TIME_OPTION},
   {"time-style", required_argument, nullptr, TIME_STYLE_OPTION},
   {"zero", no_argument, nullptr, ZERO_OPTION},
@@ -2175,6 +2178,10 @@ decode_switches (int argc, char **argv)
         case 'T':
           tabsize_opt = xnumtoumax (optarg, 0, 0, MIN (PTRDIFF_MAX, SIZE_MAX),
                                     "", _("invalid tab size"), LS_FAILURE, 0);
+          break;
+        
+        case 'V':  // Visual format
+          visual_format = true;
           break;
 
         case 'U':
@@ -4227,6 +4234,42 @@ print_current_files (void)
 
     return;
   }
+
+  if (visual_format) {
+    uintmax_t total_size = 0;
+
+    // �꾩껜 �뚯씪 �ш린 怨꾩궛
+    for (idx_t i = 0; i < cwd_n_used; i++) {
+      struct fileinfo *f = sorted_file[i];  // 紐낆떆�� 罹먯뒪��
+      if (f->stat_ok) {
+        total_size += f->stat.st_size;
+      }
+}
+
+
+    if (total_size == 0) {
+        printf("No files or empty directory.\n");
+        return;
+    }
+
+    // 媛� �뚯씪�� �ш린 鍮꾩쑉怨� �쒓컖�� �쒗쁽 異쒕젰
+    for (idx_t i = 0; i < cwd_n_used; i++) {
+        struct fileinfo *f = sorted_file[i];
+        char bar[51] = {0};  // �쒓컖�� 諛� (理쒕� 湲몄씠 50)
+        double percentage = 0.0;
+
+        if (f->stat_ok) {
+            percentage = (double)f->stat.st_size / total_size * 100.0;
+            int bar_length = (int)(percentage / 2);  // 理쒕� 50媛쒖쓽 # �ъ슜
+            memset(bar, '#', bar_length);
+        }
+
+        printf("%-35s [%-50s] %.1f%%\n", f->name, bar, percentage);
+    }
+
+    return;
+  }
+
 
 
 
